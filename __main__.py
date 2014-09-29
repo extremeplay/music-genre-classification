@@ -21,14 +21,17 @@ FEAT_DATA_PATH = GTZAN_POST_PATH + '/features'
 CLASSIF_DATA_PATH = GTZAN_POST_PATH + '/classifiers'
 TEST_EVAL_PATH = GTZAN_POST_PATH + '/evaluation'
 GRAPH_PATH = GTZAN_POST_PATH + '/graphs'
+SIM_RES_PATH = GTZAN_POST_PATH + '/sim'
 
 FOLDS = 10
+ITERS = 10
 
 SKIP_FEAT_EXT = True
-SKIP_TRAIN = False
+SKIP_TRAIN = True
 # SKIP_TEST = True
-SKIP_GRAPH = False
+SKIP_GRAPH = True
 SKIP_CROSS_VALIDATE = False
+SKIP_SIM = False
 
 
 def c2plot_roc(fpr, tpr, title, filename):
@@ -62,7 +65,7 @@ def c2plot_prc(recall, precision, title, name):
     pyplot.savefig(os.path.join(GRAPH_PATH, "pr_" + name + ".png"), bbox_inches="tight")
 
 
-def c2plot_confmat(cm, genres, title):
+def c2plot_confmat(cm, title):
     from matplotlib import rcParams
 
     rcParams.update({'figure.autolayout': True})
@@ -127,33 +130,19 @@ def loadfeatures():
         genrelocal.append(dirname)
     return numpy.array(Xlocal), numpy.array(ylocal), numpy.array(songslocal), numpy.array(genrelocal)
 
-# preprocessing
-# convert .au to .wav using bash
 
-# feature extractionr
-if SKIP_FEAT_EXT:
-    pass
-else:
-    extractfeatures()
-    extractfeatures2()
+def train():
+    score_all = []
+    cm_all = []
+    prcurve_p_all = []
+    prcurve_r_all = []
+    prcurve_thresh_all = []
+    prcurve_score_all = []
+    roc_tpr_all = []
+    roc_fpr_all = []
+    roc_thresh_all = []
+    roc_score_all = []
 
-# load features
-X, y, songs, genres = loadfeatures()
-
-score_all = []
-cm_all = []
-prcurve_p_all = []
-prcurve_r_all = []
-prcurve_thresh_all = []
-prcurve_score_all = []
-roc_tpr_all = []
-roc_fpr_all = []
-roc_thresh_all = []
-roc_score_all = []
-
-if SKIP_TRAIN:
-    pass
-else:
     splits = []
     if SKIP_CROSS_VALIDATE:
         train_idx, test_idx = sklearn.cross_validation.train_test_split(range(len(X)), train_size=0.8)
@@ -161,7 +150,7 @@ else:
     else:
         for train_idx, test_idx in sklearn.cross_validation.KFold(n=len(X), n_folds=FOLDS, shuffle=True):
             splits.append((train_idx, test_idx))
-    
+
     for train_idx, test_idx in splits:
 
         X_train, y_train, X_test, y_test = X[train_idx], y[train_idx], X[test_idx], y[test_idx]
@@ -226,24 +215,20 @@ else:
                 roc_score_all=roc_score_all)
 
 
-# load test results
+def graoh():
+    # load test results
 
-npzfile = numpy.load(TEST_EVAL_PATH + '/' + 'logistic.npz')
+    npzfile = numpy.load(TEST_EVAL_PATH + '/' + 'logistic.npz')
 
-score_all = npzfile['score_all']
-cm_all = npzfile['cm_all']
-prcurve_p_all = npzfile['prcurve_p_all']
-prcurve_r_all = npzfile['prcurve_r_all']
-prcurve_score_all = npzfile['prcurve_score_all']
-roc_tpr_all = npzfile['roc_tpr_all']
-roc_fpr_all = npzfile['roc_fpr_all']
-roc_score_all = npzfile['roc_score_all']
+    score_all = npzfile['score_all']
+    cm_all = npzfile['cm_all']
+    prcurve_p_all = npzfile['prcurve_p_all']
+    prcurve_r_all = npzfile['prcurve_r_all']
+    prcurve_score_all = npzfile['prcurve_score_all']
+    roc_tpr_all = npzfile['roc_tpr_all']
+    roc_fpr_all = npzfile['roc_fpr_all']
+    roc_score_all = npzfile['roc_score_all']
 
-
-# results presentation
-if SKIP_GRAPH:
-    pass
-else:
     # get median of accuracies of all K-folds and output that classifier as result
     fold = numpy.argsort(score_all)[len(score_all) / 2]
 
@@ -255,5 +240,49 @@ else:
                    'ROC curve (AUC = %s) for %s vs all' % (roc_score_all[fold][label], genres[label]),
                    genres[label])
 
-    c2plot_confmat(cm_all[fold].astype(float) / numpy.sum(cm_all[fold], axis=0), genres, 'Normalized confusion matrix')
-pass
+    c2plot_confmat(cm_all[fold].astype(float) / numpy.sum(cm_all[fold], axis=0), 'Normalized confusion matrix')
+
+
+def sim():
+    accs = []
+    for i in range(ITERS):
+        train()
+        npzfile = numpy.load(TEST_EVAL_PATH + '/' + 'logistic.npz')
+        score_all = npzfile['score_all']
+        fold = numpy.argsort(score_all)[len(score_all) / 2]
+        accs.append(score_all[fold])
+
+    f = open(SIM_RES_PATH + '/' + 'sim.txt', 'w')
+    f.write('MEAN = %f STD = %f' % (numpy.mean(accs), numpy.std(accs)))
+    f.close()
+
+
+# preprocessing
+# convert .au to .wav using bash
+
+# feature extractionr
+if SKIP_FEAT_EXT:
+    pass
+else:
+    extractfeatures()
+    extractfeatures2()
+
+# load features
+X, y, songs, genres = loadfeatures()
+
+if SKIP_TRAIN:
+    pass
+else:
+    train()
+
+
+# results presentation
+if SKIP_GRAPH:
+    pass
+else:
+    graoh()
+
+if SKIP_SIM:
+    pass
+else:
+    sim()
